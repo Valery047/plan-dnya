@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мой план дня</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-secondary-bg-color,#f3f1ea);
+  --card:var(--tg-theme-bg-color,#ffffff);
+  --ink:var(--tg-theme-text-color,#1d2127);
+  --mute:var(--tg-theme-hint-color,#6a7078);
+  --line:rgba(128,128,128,.28);
+  --track:rgba(128,128,128,.16);
+  --accent:#f2b300; --ok:#2e9e68; --bad:#d6503a;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px 14px 48px}
+h1{font-size:24px;line-height:1.15;margin:4px 0 4px;font-weight:700}
+h2{font-size:18px;margin:26px 0 10px;font-weight:700}
+.sub{color:var(--mute);margin:0 0 14px}
+.sum{background:var(--ink);color:var(--card);border-radius:14px;padding:16px}
+.sum b{font-size:28px;font-weight:700;display:block;line-height:1.1}
+.sum span{opacity:.75;font-size:14px}
+.bar{height:10px;background:rgba(128,128,128,.4);border-radius:6px;margin-top:12px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+.card.done{opacity:.62}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ttl{font-weight:700;font-size:17px}
+.due{color:var(--mute);font-size:14px}
+.badge{font-size:13px;font-weight:500;padding:2px 9px;border-radius:99px;background:var(--track);color:var(--mute)}
+.badge.bad{background:var(--bad);color:#fff}
+.badge.ok{background:var(--ok);color:#fff}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+label.f{display:block;font-size:13px;color:var(--mute)}
+input[type=number]{width:100%;font:inherit;font-size:17px;padding:9px 10px;margin-top:3px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink)}
+.chk{display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:500;min-height:44px}
+.chk input{width:26px;height:26px;accent-color:var(--ok);flex:none}
+.nm,.plan{font-size:14px;background:var(--track);padding:7px 10px;border-radius:8px;margin-top:8px}
+.days{display:grid;gap:10px}
+.dt{font-weight:700}
+.diff{font-size:13px;margin-top:6px;color:var(--mute)}
+.checks{display:flex;gap:16px;flex-wrap:wrap}
+.norm{color:var(--mute);font-size:14px;margin:-4px 0 10px}
+button{font:inherit;font-weight:500;padding:10px 14px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-height:44px;margin-top:20px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Мой план дня</h1>
+  <p class="sub">17–24 ноября. Отмечай галочкой, что внесено.</p>
+
+  <div class="sum">
+    <b id="left">—</b>
+    <span id="leftNote">осталось внести по платежам</span>
+    <div class="bar"><i id="barFill"></i></div>
+  </div>
+
+  <h2>Заказы до пятницы 23:59</h2>
+  <div class="card">
+    <div class="ttl" id="ordTtl">—</div>
+    <div class="nm" id="ordNote"></div>
+    <label class="f" style="margin-top:10px">Уже засчитано до 17 ноября, шт (если не было, оставь пустым)<input type="number" inputmode="numeric" data-g="1" data-k="base" placeholder="0"></label>
+  </div>
+
+  <h2>Платежи</h2>
+  <div id="pays"></div>
+
+  <h2>Дни</h2>
+  <p class="norm">Норма выручки на день: 7 100 ₽. Из них 1 000 ₽ на топливо, остальное по платежам, как указано в каждом дне.</p>
+  <div class="days" id="days"></div>
+
+  <button id="reset" type="button">Сбросить всё</button>
+</main>
+
+<script>
+(function(){
+  var tg=window.Telegram&&window.Telegram.WebApp;
+  if(tg){try{tg.ready();tg.expand();}catch(e){}}
+  var cs=(tg&&tg.CloudStorage&&tg.CloudStorage.setItem)?tg.CloudStorage:null;
+
+  var KEY="plan-nedelya-tg-v1";
+  var PAY=[
+    {id:"p1",t:"Долг",d:"2026-11-20",a:20000,n:"до пятницы",nm:"2 750 ₽ в день с 17 по 20 ноября (плюс 9 000 ₽, что уже есть)"},
+    {id:"p2",t:"Перевод",d:"2026-11-22",a:2500,n:"до воскресенья",nm:"1 250 ₽ в день, 21 и 22 ноября"},
+    {id:"p3",t:"Аренда авто",d:"2026-11-23",a:35000,n:"в понедельник, допустимо до вторника",nm:"3 350 ₽ в день 17–20 ноября, 4 850 ₽ в день 21–22 ноября, 6 100 ₽ в день 23–24 ноября"},
+    {id:"p4",t:"Долг",d:"2026-12-14",a:38000,n:"до 14 декабря",nm:"около 1 900 ₽ в день с 25 ноября по 14 декабря, сверх еженедельной аренды"}
+  ];
+  var DAYS=[]; for(var i=17;i<=24;i++){DAYS.push("2026-11-"+i);}
+  var WD=["вс","пн","вт","ср","чт","пт","сб"];
+  var MON=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+  var NORM=7100;
+
+  var S={pay:{},days:{},g:{}};
+  try{var raw=localStorage.getItem(KEY); if(raw){S=JSON.parse(raw)||S;}}catch(e){}
+  S.pay=S.pay||{}; S.days=S.days||{}; S.g=S.g||{};
+
+  var cloudOn=false, tm=null;
+  function save(){
+    try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+    if(!cs||!cloudOn){return;}
+    clearTimeout(tm);
+    tm=setTimeout(function(){
+      ["pay","days","g"].forEach(function(k){
+        try{cs.setItem(k,JSON.stringify(S[k]),function(){});}catch(e){}
+      });
+    },700);
+  }
+  function fmt(n){return Math.round(n).toLocaleString("ru-RU")+" ₽";}
+  function pd(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2]);}
+  function label(s){var d=pd(s);return WD[d.getDay()]+", "+d.getDate()+" "+MON[d.getMonth()];}
+  function todayMs(){var t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate()).getTime();}
+  function P(id){var p=S.pay[id]; if(!p){p=S.pay[id]={};} return p;}
+  function amt(p){var v=P(p.id).amt; return (v===undefined||v==="")?p.a:+v;}
+  function paid(p){var x=P(p.id); if(x.done){return amt(p);} return +(x.paid||0);}
+  function planTxt(d){
+    var n=+d.slice(8), a;
+    if(n<=20){a=[["топливо",1000],["долг",2750],["аренда",3350]];}
+    else if(n<=22){a=[["топливо",1000],["перевод 2 500",1250],["аренда",4850]];}
+    else{a=[["топливо",1000],["аренда",6100]];}
+    return a.map(function(x){return x[0]+" "+fmt(x[1]);}).join(", ");
+  }
+
+  var paysEl=document.getElementById("pays");
+  PAY.forEach(function(p){
+    var x=P(p.id), c=document.createElement("div");
+    c.className="card"; c.id="c-"+p.id;
+    c.innerHTML=
+      '<div class="row"><div><div class="ttl">'+p.t+'</div><div class="due">'+label(p.d)+' · '+p.n+'</div></div><span class="badge" id="b-'+p.id+'"></span></div>'+
+      '<div class="nm">Норма: '+p.nm+'</div>'+
+      '<div class="fields">'+
+        '<label class="f">Сумма, ₽<input type="number" inputmode="numeric" data-k="amt" data-id="'+p.id+'" value="'+amt(p)+'"></label>'+
+        '<label class="f">Внесено, ₽<input type="number" inputmode="numeric" data-k="paid" data-id="'+p.id+'" value="'+(x.paid||"")+'" placeholder="0"></label>'+
+      '</div>'+
+      '<label class="chk"><input type="checkbox" data-k="done" data-id="'+p.id+'"'+(x.done?" checked":"")+'> Оплачено полностью</label>';
+    paysEl.appendChild(c);
+  });
+
+  var daysEl=document.getElementById("days");
+  DAYS.forEach(function(d){
+    var x=S.days[d]||(S.days[d]={}), c=document.createElement("div");
+    c.className="card";
+    c.innerHTML=
+      '<div class="dt">'+label(d)+'</div>'+
+      '<div class="fields"><label class="f">Заказов за день<input type="number" inputmode="numeric" data-day="'+d+'" data-k="ord" value="'+(x.ord||"")+'" placeholder="0"></label><label class="f">Выручка за день, ₽<input type="number" inputmode="numeric" data-day="'+d+'" data-k="rev" value="'+(x.rev||"")+'" placeholder="0"></label></div>'+
+      '<div class="plan">Отложить: '+planTxt(d)+'</div>'+
+      '<div class="diff" id="df-'+d+'"></div>'+
+      '<div class="checks">'+
+        '<label class="chk"><input type="checkbox" data-day="'+d+'" data-k="fuel"'+(x.fuel?" checked":"")+'> Топливо на завтра, 1 000 ₽</label>'+
+        '<label class="chk"><input type="checkbox" data-day="'+d+'" data-k="res"'+(x.res?" checked":"")+'> Отложено на платежи</label>'+
+      '</div>';
+    daysEl.appendChild(c);
+  });
+
+  function fill(){
+    var els=document.querySelectorAll("[data-k]");
+    for(var i=0;i<els.length;i++){
+      var t=els[i],k=t.getAttribute("data-k"),day=t.getAttribute("data-day"),id=t.getAttribute("data-id");
+      var src=day?S.days[day]:(id?S.pay[id]:S.g); if(!src){continue;}
+      var v=src[k];
+      if(t.type==="checkbox"){t.checked=!!v;}
+      else if(v!==undefined){t.value=v;}
+    }
+  }
+
+  function refresh(){
+    var today=todayMs(), total=0, got=0;
+    PAY.forEach(function(p){
+      var a=amt(p), g=Math.min(paid(p),a), x=P(p.id);
+      total+=a; got+=g;
+      var b=document.getElementById("b-"+p.id), c=document.getElementById("c-"+p.id);
+      c.classList.toggle("done",!!x.done);
+      b.className="badge";
+      if(x.done||g>=a){b.textContent="Оплачено";b.classList.add("ok");}
+      else if(pd(p.d).getTime()<today){b.textContent="Просрочено, осталось "+fmt(a-g);b.classList.add("bad");}
+      else{b.textContent="Осталось "+fmt(a-g);}
+    });
+    document.getElementById("left").textContent=fmt(total-got);
+    document.getElementById("leftNote").textContent="осталось внести из "+fmt(total);
+    document.getElementById("barFill").style.width=(total?Math.min(100,got/total*100):0)+"%";
+
+    DAYS.forEach(function(d){
+      var el=document.getElementById("df-"+d), r=+((S.days[d]||{}).rev||0);
+      if(!r){el.textContent="";return;}
+      var diff=r-NORM;
+      el.textContent=diff>=0?"Выше нормы на "+fmt(diff):"Ниже нормы на "+fmt(-diff);
+      el.style.color=diff>=0?"var(--ok)":"var(--bad)";
+    });
+
+    var done=+(S.g.base||0);
+    DAYS.forEach(function(d){done+=+((S.days[d]||{}).ord||0);});
+    var left=Math.max(0,82-done), cur=new Date().getDate();
+    var dl=DAYS.filter(function(d){var n=+d.slice(8);return n>=cur&&n<=20&&!(+((S.days[d]||{}).ord)>0);}).length;
+    document.getElementById("ordTtl").textContent="Осталось "+left+" из 82";
+    var on=document.getElementById("ordNote");
+    if(left===0){on.textContent="Все 82 заказа выполнены.";}
+    else if(dl>0){on.textContent="Выполнено "+done+". Норма: "+Math.ceil(left/dl)+" в день на оставшиеся дни ("+dl+").";}
+    else{on.textContent="Выполнено "+done+". Дни до пятницы закончились, осталось "+left+".";}
+  }
+
+  function handle(t){
+    var k=t.getAttribute&&t.getAttribute("data-k"); if(!k){return;}
+    var v=t.type==="checkbox"?t.checked:t.value;
+    var day=t.getAttribute("data-day"), id=t.getAttribute("data-id");
+    if(t.getAttribute("data-g")){S.g[k]=v;}
+    else if(day){(S.days[day]=S.days[day]||{})[k]=v;}
+    else if(id){P(id)[k]=v;}
+    save(); refresh();
+  }
+  document.addEventListener("input",function(e){handle(e.target);});
+  document.addEventListener("change",function(e){handle(e.target);});
+
+  document.getElementById("reset").addEventListener("click",function(){
+    if(!confirm("Сбросить все отметки и суммы?")){return;}
+    try{localStorage.removeItem(KEY);}catch(e){}
+    S={pay:{},days:{},g:{}};
+    if(cs){["pay","days","g"].forEach(function(k){try{cs.removeItem(k,function(){});}catch(e){}});}
+    setTimeout(function(){location.reload();},300);
+  });
+
+  refresh();
+
+  if(cs){
+    try{
+      cs.getItems(["pay","days","g"],function(err,res){
+        if(!err&&res&&(res.pay||res.days||res.g)){
+          try{
+            if(res.pay){S.pay=JSON.parse(res.pay);}
+            if(res.days){S.days=JSON.parse(res.days);}
+            if(res.g){S.g=JSON.parse(res.g);}
+            fill();
+          }catch(e){}
+        }
+        cloudOn=true;
+        if(!err&&!(res&&(res.pay||res.days||res.g))){save();}
+        refresh();
+      });
+    }catch(e){}
+  }
+})();
+</script>
+</body>
+</html>
